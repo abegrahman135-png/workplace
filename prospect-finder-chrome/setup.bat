@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title ProspectFinder Setup
 color 0B
 
@@ -35,7 +36,6 @@ node -v
 if errorlevel 1 (
     echo  Node.js not found!
     start "" "https://nodejs.org/en/download"
-    echo  Install Node.js then run this again.
     pause
     goto MENU
 )
@@ -43,15 +43,12 @@ echo  OK
 echo.
 
 echo  STEP 2 - Wrangler...
-echo  Please wait...
 call npm install -g wrangler
 call npm install -g --allow-scripts=esbuild,workerd wrangler
-echo.
 echo  OK
 echo.
 
 echo  STEP 3 - Login to Cloudflare
-echo  Press any key to open browser...
 pause
 call wrangler login
 echo.
@@ -63,58 +60,47 @@ set /p "IG=  Paste sessionid: "
 echo.
 
 echo  STEP 5 - Finding extension folder...
-echo.
+set "PROXY_DIR=%~dp0prospect-finder-chrome\workers\profile-proxy"
+echo  Looking at: !PROXY_DIR!
 
-:: Find the profile-proxy folder
-set "PROXY_DIR="
-if exist "%~dp0prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
-    set "PROXY_DIR=%~dp0prospect-finder-chrome\workers\profile-proxy"
-    echo  Found at: %~dp0prospect-finder-chrome\workers\profile-proxy
-)
-if exist "%CD%\prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
-    set "PROXY_DIR=%CD%\prospect-finder-chrome\workers\profile-proxy"
-    echo  Found at: %CD%\prospect-finder-chrome\workers\profile-proxy
-)
-
-if "!PROXY_DIR!"=="" (
+if not exist "!PROXY_DIR!\wrangler.toml" (
     echo.
-    echo  Cannot find prospect-finder-chrome\workers\profile-proxy\wrangler.toml
-    echo.
-    echo  Where did you extract the zip? Paste the full path:
+    echo  Not found at default location.
+    echo  Paste the folder path where you extracted the zip:
     echo  Example: C:\Users\YourName\Downloads\workplace-main
     echo.
-    set /p "BASE_DIR=  Path: "
-    if exist "!BASE_DIR!\prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
-        set "PROXY_DIR=!BASE_DIR!\prospect-finder-chrome\workers\profile-proxy"
-        echo  Found!
-    ) else (
-        echo.
-        echo  Still not found. Check the path and try again.
-        echo  Press any key...
-        pause
-        goto MENU
-    )
+    set /p "BASE=  Path: "
+    set "PROXY_DIR=!BASE!\prospect-finder-chrome\workers\profile-proxy"
 )
 
+if not exist "!PROXY_DIR!\wrangler.toml" (
+    echo.
+    echo  Still not found: !PROXY_DIR!\wrangler.toml
+    echo  Press any key...
+    pause
+    goto MENU
+)
+
+echo  Found: !PROXY_DIR!
 echo.
-echo  STEP 6 - Creating R2 bucket...
+
+echo  STEP 6 - R2 bucket...
 cd /d "!PROXY_DIR!"
+echo  Now in: !CD!
 call wrangler r2 bucket create pf-profile-cache
-echo  (If it says "already exists" that is OK)
+echo  (OK if already exists)
 echo.
 
-echo  STEP 7 - Storing session...
-echo %IG%| call wrangler secret put IG_SESSION_1
+echo  STEP 7 - Store session...
+echo !IG!| call wrangler secret put IG_SESSION_1
 echo.
 
-echo  STEP 8 - Deploying Worker...
+echo  STEP 8 - Deploy...
 call wrangler deploy
 echo.
 
 echo  ========================================
-echo   DONE!
-echo   Copy the Worker URL shown above.
-echo   Paste it in extension Settings.
+echo   DONE! Copy the Worker URL above.
 echo  ========================================
 echo.
 pause
@@ -140,15 +126,12 @@ echo  OK
 echo.
 
 echo  STEP 2 - Wrangler...
-echo  Please wait...
 call npm install -g wrangler
 call npm install -g --allow-scripts=esbuild,workerd wrangler
-echo.
 echo  OK
 echo.
 
 echo  STEP 3 - Login...
-echo  Press any key...
 pause
 call wrangler login
 echo.
@@ -158,27 +141,24 @@ set /p "IG=  Paste here: "
 echo.
 
 echo  STEP 5 - Finding extension folder...
-echo.
+set "PROXY_DIR=%~dp0prospect-finder-chrome\workers\profile-proxy"
+echo  Looking at: !PROXY_DIR!
 
-set "PROXY_DIR="
-if exist "%~dp0prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
-    set "PROXY_DIR=%~dp0prospect-finder-chrome\workers\profile-proxy"
-)
-if exist "%CD%\prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
-    set "PROXY_DIR=%CD%\prospect-finder-chrome\workers\profile-proxy"
+if not exist "!PROXY_DIR!\wrangler.toml" (
+    echo.
+    echo  Not found at default location.
+    echo  Paste the folder path where you extracted the zip:
+    echo.
+    set /p "BASE=  Path: "
+    set "PROXY_DIR=!BASE!\prospect-finder-chrome\workers\profile-proxy"
 )
 
-if "!PROXY_DIR!"=="" (
-    echo  Cannot find wrangler.toml
-    echo  Paste the path where you extracted the zip:
-    set /p "BASE_DIR=  Path: "
-    if exist "!BASE_DIR!\prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
-        set "PROXY_DIR=!BASE_DIR!\prospect-finder-chrome\workers\profile-proxy"
-    ) else (
-        echo  Not found! Press any key...
-        pause
-        goto MENU
-    )
+if not exist "!PROXY_DIR!\wrangler.toml" (
+    echo.
+    echo  Still not found: !PROXY_DIR!\wrangler.toml
+    echo  Press any key...
+    pause
+    goto MENU
 )
 
 echo  Found: !PROXY_DIR!
@@ -186,12 +166,13 @@ echo.
 
 echo  STEP 6 - R2 bucket...
 cd /d "!PROXY_DIR!"
+echo  Now in: !CD!
 call wrangler r2 bucket create pf-profile-cache
 echo  (OK if already exists)
 echo.
 
 echo  STEP 7 - Store session...
-echo %IG%| call wrangler secret put IG_SESSION_1
+echo !IG!| call wrangler secret put IG_SESSION_1
 echo.
 
 echo  STEP 8 - Deploy...
@@ -214,10 +195,10 @@ echo   BACKEND PROXY
 echo  ========================================
 echo.
 echo  Need residential proxy:
-echo    IPRoyal    - $5/mo  - iproyal.com
-echo    Smartproxy - $12/mo - smartproxy.com
-echo    BrightData - $15/mo - brightdata.com
-echo    Oxylabs    - $15/mo - oxylabs.io
+echo    IPRoyal    - $5/mo
+echo    Smartproxy - $12/mo
+echo    BrightData - $15/mo
+echo    Oxylabs    - $15/mo
 echo.
 pause
 
@@ -232,21 +213,18 @@ if errorlevel 1 (
 set /p "IG=  Session ID: "
 set /p "PX=  Proxy URL: "
 
-set "BACKEND_DIR="
-if exist "%~dp0prospect-finder-chrome\workers\backend-proxy\package.json" (
-    set "BACKEND_DIR=%~dp0prospect-finder-chrome\workers\backend-proxy"
-)
-if "!BACKEND_DIR!"=="" (
+set "BACKEND_DIR=%~dp0prospect-finder-chrome\workers\backend-proxy"
+if not exist "!BACKEND_DIR!\package.json" (
     echo  Paste path where you extracted zip:
-    set /p "BASE_DIR=  Path: "
-    set "BACKEND_DIR=!BASE_DIR!\prospect-finder-chrome\workers\backend-proxy"
+    set /p "BASE=  Path: "
+    set "BACKEND_DIR=!BASE!\prospect-finder-chrome\workers\backend-proxy"
 )
 
 cd /d "!BACKEND_DIR!"
 call npm install
 (
-echo IG_SESSIONS=%IG%
-echo PROXY_URLS=%PX%
+echo IG_SESSIONS=!IG!
+echo PROXY_URLS=!PX!
 echo RATE_LIMIT_PER_SESSION=20
 echo PORT=3000
 ) > .env
