@@ -6,6 +6,7 @@
  * uses different IPs for each request.
  */
 
+import 'dotenv/config';
 import { createServer } from 'http';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
