@@ -310,57 +310,87 @@ echo         CLOUDFLARE WORKER DEPLOYMENT
 echo  ========================================================
 echo.
 
+echo  [1/6] Checking Node.js...
 call :CHECK_NODE
 if errorlevel 1 goto MENU
+
+echo.
+echo  [2/6] Checking npm...
+call :CHECK_NPM
+if errorlevel 1 goto MENU
+
+echo.
+echo  [3/6] Checking Wrangler...
 call :CHECK_WRANGLER
 if errorlevel 1 goto MENU
+
+echo.
+echo  [4/6] Installing project dependencies...
 call :INSTALL_PROJECT_DEPS
 
 echo.
-echo  [1/5] Login to Cloudflare...
+echo  [5/6] Login to Cloudflare
+echo.
+echo  A browser window will open. Click Authorize.
 echo  Press any key to open browser...
 pause >nul
 call wrangler login
 if errorlevel 1 (
-    echo  Login failed. Press any key...
+    echo.
+    echo  ERROR: Login failed.
+    echo  Press any key to return to menu...
     pause >nul
     goto MENU
 )
-echo  OK - Logged in
+echo  OK - Logged in to Cloudflare
 
 echo.
-echo  [2/5] Instagram sessionid:
-set /p "IG_SESSION=  Paste here: "
+echo  [6/6] Instagram Session
+echo.
+echo  How to get sessionid:
+echo    1. Open instagram.com (logged in)
+echo    2. F12 - Application - Cookies - instagram.com
+echo    3. Find sessionid - copy the Value
+echo.
+set /p "IG_SESSION=  Paste sessionid here: "
 if "!IG_SESSION!"=="" (
-    echo  Session ID required. Press any key...
+    echo.
+    echo  ERROR: Session ID is required.
+    echo  Press any key to return to menu...
     pause >nul
     goto MENU
 )
 
 echo.
-echo  [3/5] Creating R2 bucket...
+echo  Creating R2 bucket...
 cd /d "%EXT_DIR%\workers\profile-proxy"
 call wrangler r2 bucket create pf-profile-cache 2>nul
-echo  OK
+echo  OK - R2 bucket ready
 
 echo.
-echo  [4/5] Storing session...
+echo  Storing session as encrypted secret...
 echo !IG_SESSION!| call wrangler secret put IG_SESSION_1 2>nul
-echo  OK
+echo  OK - Session stored
 
 echo.
-echo  [5/5] Deploying...
+echo  Deploying Cloudflare Worker...
+echo  Please wait...
+echo.
 call wrangler deploy
 if errorlevel 1 (
-    echo  Deploy failed. Press any key...
+    echo.
+    echo  ERROR: Deploy failed. Check the error above.
+    echo  Press any key to return to menu...
     pause >nul
     goto MENU
 )
 
 echo.
 echo  ========================================================
-echo   Done! Copy the Worker URL above.
-echo   Paste it in the extension Dashboard then Settings.
+echo   Worker deployed successfully!
+echo.
+echo   Copy the Worker URL shown above (starts with https://)
+echo   and paste it in the extension Dashboard then Settings.
 echo  ========================================================
 echo.
 echo  Press any key to return to menu...
@@ -585,32 +615,52 @@ exit /b 0
 :CHECK_WRANGLER
 wrangler --version >nul 2>&1
 if errorlevel 1 (
-    echo  Wrangler not found. Installing...
-    call npm install -g --allow-scripts=esbuild,workerd wrangler
-    if errorlevel 1 (
-        call npm install -g wrangler
-    )
+    echo  Wrangler not found. Installing now...
+    echo  This may take 30-60 seconds. Please wait...
+    echo.
+    call npm install -g wrangler
+    echo.
     wrangler --version >nul 2>&1
     if errorlevel 1 (
         echo.
-        echo  ERROR: Failed to install Wrangler.
-        echo  Try manually: npm install -g wrangler
-        echo  Press any key...
-        pause >nul
-        exit /b 1
+        echo  WARNING: Wrangler install may have issues.
+        echo  Trying alternative install...
+        echo.
+        call npm install -g --allow-scripts=esbuild,workerd wrangler
+        echo.
+        wrangler --version >nul 2>&1
+        if errorlevel 1 (
+            echo.
+            echo  ERROR: Could not install Wrangler automatically.
+            echo.
+            echo  Please install manually by running this command:
+            echo    npm install -g wrangler
+            echo.
+            echo  Then run this script again.
+            echo.
+            echo  Press any key to return to menu...
+            pause >nul
+            exit /b 1
+        )
     )
 )
-echo  OK - Wrangler installed
+for /f "tokens=*" %%i in ('wrangler --version 2^>nul') do set WRANGLER_VER=%%i
+echo  OK - Wrangler !WRANGLER_VER!
 exit /b 0
 
 :INSTALL_PROJECT_DEPS
 if exist "%EXT_DIR%\workers\profile-proxy\package.json" (
     if not exist "%EXT_DIR%\workers\profile-proxy\node_modules" (
         echo  Installing CF Worker dependencies...
+        echo  Please wait...
         pushd "%EXT_DIR%\workers\profile-proxy"
-        call npm install --silent 2>nul
+        call npm install 2>&1
         popd
-        echo  OK - CF Worker deps installed
+        if exist "%EXT_DIR%\workers\profile-proxy\node_modules" (
+            echo  OK - CF Worker deps installed
+        ) else (
+            echo  WARNING: CF Worker deps may not have installed correctly
+        )
     ) else (
         echo  OK - CF Worker deps already installed
     )
@@ -618,10 +668,15 @@ if exist "%EXT_DIR%\workers\profile-proxy\package.json" (
 if exist "%EXT_DIR%\workers\backend-proxy\package.json" (
     if not exist "%EXT_DIR%\workers\backend-proxy\node_modules" (
         echo  Installing Backend Proxy dependencies...
+        echo  Please wait...
         pushd "%EXT_DIR%\workers\backend-proxy"
-        call npm install --silent 2>nul
+        call npm install 2>&1
         popd
-        echo  OK - Backend Proxy deps installed
+        if exist "%EXT_DIR%\workers\backend-proxy\node_modules" (
+            echo  OK - Backend Proxy deps installed
+        ) else (
+            echo  WARNING: Backend Proxy deps may not have installed correctly
+        )
     ) else (
         echo  OK - Backend Proxy deps already installed
     )
