@@ -59,23 +59,21 @@ echo.
 set /p "IG=  Paste sessionid: "
 echo.
 
-echo  STEP 5 - Finding extension folder...
-set "PROXY_DIR=%~dp0prospect-finder-chrome\workers\profile-proxy"
-echo  Looking at: !PROXY_DIR!
-
-if not exist "!PROXY_DIR!\wrangler.toml" (
+echo  STEP 5 - Finding profile-proxy folder...
+call :FIND_PROXY
+if "!PROXY_DIR!"=="" (
     echo.
-    echo  Not found at default location.
-    echo  Paste the folder path where you extracted the zip:
-    echo  Example: C:\Users\YourName\Downloads\workplace-main
+    echo  Cannot find profile-proxy folder.
+    echo  Paste the FULL path to the prospect-finder-chrome folder:
+    echo  Example: C:\Users\YourName\Downloads\workplace-main\prospect-finder-chrome
     echo.
-    set /p "BASE=  Path: "
-    set "PROXY_DIR=!BASE!\prospect-finder-chrome\workers\profile-proxy"
+    set /p "EXT_DIR=  Path: "
+    set "PROXY_DIR=!EXT_DIR!\workers\profile-proxy"
 )
 
 if not exist "!PROXY_DIR!\wrangler.toml" (
     echo.
-    echo  Still not found: !PROXY_DIR!\wrangler.toml
+    echo  Still not found: !PROXY_DIR!
     echo  Press any key...
     pause
     goto MENU
@@ -140,22 +138,20 @@ echo  STEP 4 - Session ID:
 set /p "IG=  Paste here: "
 echo.
 
-echo  STEP 5 - Finding extension folder...
-set "PROXY_DIR=%~dp0prospect-finder-chrome\workers\profile-proxy"
-echo  Looking at: !PROXY_DIR!
-
-if not exist "!PROXY_DIR!\wrangler.toml" (
+echo  STEP 5 - Finding profile-proxy folder...
+call :FIND_PROXY
+if "!PROXY_DIR!"=="" (
     echo.
-    echo  Not found at default location.
-    echo  Paste the folder path where you extracted the zip:
+    echo  Cannot find profile-proxy folder.
+    echo  Paste the FULL path to the prospect-finder-chrome folder:
     echo.
-    set /p "BASE=  Path: "
-    set "PROXY_DIR=!BASE!\prospect-finder-chrome\workers\profile-proxy"
+    set /p "EXT_DIR=  Path: "
+    set "PROXY_DIR=!EXT_DIR!\workers\profile-proxy"
 )
 
 if not exist "!PROXY_DIR!\wrangler.toml" (
     echo.
-    echo  Still not found: !PROXY_DIR!\wrangler.toml
+    echo  Still not found: !PROXY_DIR!
     echo  Press any key...
     pause
     goto MENU
@@ -213,11 +209,11 @@ if errorlevel 1 (
 set /p "IG=  Session ID: "
 set /p "PX=  Proxy URL: "
 
-set "BACKEND_DIR=%~dp0prospect-finder-chrome\workers\backend-proxy"
-if not exist "!BACKEND_DIR!\package.json" (
-    echo  Paste path where you extracted zip:
-    set /p "BASE=  Path: "
-    set "BACKEND_DIR=!BASE!\prospect-finder-chrome\workers\backend-proxy"
+call :FIND_BACKEND
+if "!BACKEND_DIR!"=="" (
+    echo  Paste path to prospect-finder-chrome folder:
+    set /p "EXT_DIR=  Path: "
+    set "BACKEND_DIR=!EXT_DIR!\workers\backend-proxy"
 )
 
 cd /d "!BACKEND_DIR!"
@@ -232,3 +228,76 @@ call npm start
 
 pause
 goto MENU
+
+:: =============================================
+:: HELPER: Find profile-proxy folder
+:: =============================================
+:FIND_PROXY
+set "PROXY_DIR="
+
+:: Check where this script is
+set "SCRIPT_DIR=%~dp0"
+
+:: If script is in prospect-finder-chrome/
+if exist "!SCRIPT_DIR!workers\profile-proxy\wrangler.toml" (
+    set "PROXY_DIR=!SCRIPT_DIR!workers\profile-proxy"
+    exit /b
+)
+
+:: If script is next to prospect-finder-chrome/
+if exist "!SCRIPT_DIR!prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
+    set "PROXY_DIR=!SCRIPT_DIR!prospect-finder-chrome\workers\profile-proxy"
+    exit /b
+)
+
+:: Check current directory
+if exist "!CD!\workers\profile-proxy\wrangler.toml" (
+    set "PROXY_DIR=!CD!\workers\profile-proxy"
+    exit /b
+)
+
+:: Search up 3 levels
+for %%A in ("!SCRIPT_DIR!." "!SCRIPT_DIR!..\" "!SCRIPT_DIR!..\..\") do (
+    if exist "%%~A\prospect-finder-chrome\workers\profile-proxy\wrangler.toml" (
+        set "PROXY_DIR=%%~A\prospect-finder-chrome\workers\profile-proxy"
+        exit /b
+    )
+    if exist "%%~A\workers\profile-proxy\wrangler.toml" (
+        set "PROXY_DIR=%%~A\workers\profile-proxy"
+        exit /b
+    )
+)
+
+exit /b
+
+:: =============================================
+:: HELPER: Find backend-proxy folder
+:: =============================================
+:FIND_BACKEND
+set "BACKEND_DIR="
+
+set "SCRIPT_DIR=%~dp0"
+
+if exist "!SCRIPT_DIR!workers\backend-proxy\package.json" (
+    set "BACKEND_DIR=!SCRIPT_DIR!workers\backend-proxy"
+    exit /b
+)
+
+if exist "!SCRIPT_DIR!prospect-finder-chrome\workers\backend-proxy\package.json" (
+    set "BACKEND_DIR=!SCRIPT_DIR!prospect-finder-chrome\workers\backend-proxy"
+    exit /b
+)
+
+if exist "!CD!\workers\backend-proxy\package.json" (
+    set "BACKEND_DIR=!CD!\workers\backend-proxy"
+    exit /b
+)
+
+for %%A in ("!SCRIPT_DIR!." "!SCRIPT_DIR!..\" "!SCRIPT_DIR!..\..\") do (
+    if exist "%%~A\prospect-finder-chrome\workers\backend-proxy\package.json" (
+        set "BACKEND_DIR=%%~A\prospect-finder-chrome\workers\backend-proxy"
+        exit /b
+    )
+)
+
+exit /b
