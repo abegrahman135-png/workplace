@@ -14,7 +14,7 @@ import { loadSettings, saveSettings } from '../db/repo.settings.js';
 import { makeSession, updateSession, getSession, activeSession, allSessions } from '../db/repo.sessions.js';
 import { ingestBatch, requeueUnfinished } from './ingest.js';
 import { installScheduler, pumpNow, retryFailed, schedulerHealth, ensureSettings } from './scheduler.js';
-import { rescoreAll } from './enricher.js';
+import { rescoreAll, setProxyUrl } from './enricher.js';
 import { bumpStats, fullSnapshot, rebuildStats } from './stats.js';
 import { broadcast } from './broadcast.js';
 import { getRuntime, setRuntime, clearRuntime } from './session_state.js';
@@ -238,6 +238,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case MSG.SETTINGS_UPDATED:
         await saveSettings(msg.settings || {});
         await ensureSettings();
+        // Update proxy URL if changed
+        try {
+          const proxyData = await chrome.storage.local.get('pf-proxy-url');
+          setProxyUrl(proxyData?.['pf-proxy-url'] || null);
+        } catch (_) {}
         return { ok: true };
 
       case MSG.OPEN_DASHBOARD: {

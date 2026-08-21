@@ -1,0 +1,30 @@
+name = "pf-profile-proxy"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Free tier: 100k requests/day — more than enough for personal use.
+# Paid ($5/mo): 10M requests/day + longer CPU time.
+
+# KV namespace for profile caching (24h TTL per profile)
+# Create: npx wrangler kv:namespace create PROFILE_CACHE
+# Then paste the id below.
+[[kv_namespaces]]
+binding = "PROFILE_CACHE"
+id = "REPLACE_ME_AFTER_WRANGLER_KV_NAMESPACE_CREATE"
+
+# ── Session secrets (after deploy) ────────────────────────────────────────
+# You need at least ONE Instagram session cookie. More = more throughput.
+#
+# Minimum (1 session, ~30 req/min safe):
+#   echo "YOUR_SESSIONID" | npx wrangler secret put IG_SESSION_1
+#
+# Recommended (3 sessions, ~90 req/min safe):
+#   echo "SESSION_1" | npx wrangler secret put IG_SESSION_1
+#   echo "SESSION_2" | npx wrangler secret put IG_SESSION_2
+#   echo "SESSION_3" | npx wrangler secret put IG_SESSION_3
+#
+# Get your sessionid from:
+#   Browser → instagram.com → DevTools → Application → Cookies → sessionid
+#
+# Each session = a different IG login. Use your main + alt accounts.
+# The worker rotates through them round-robin.

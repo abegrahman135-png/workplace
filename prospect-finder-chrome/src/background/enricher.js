@@ -14,6 +14,46 @@ import { bumpStats } from './stats.js';
 import { log } from '../lib/logger.js';
 import { hashStr } from '../lib/utils.js';
 
+/**
+ * ── Proxy configuration ───────────────────────────────────────────────────
+ *
+ * When PROXY_URL is set (via chrome.storage.local key 'pf-proxy-url'),
+ * enrichment requests go through a Cloudflare Worker that provides:
+ *   - KV-cached profiles (24h TTL) — cached profiles cost zero IG requests
+ *   - Request coalescing — N concurrent jobs for the same username = 1 IG fetch
+ *   - Server-side rate limiting across all extension instances
+ *   - A stable endpoint that survives MV3 worker eviction
+ *
+ * When the proxy is unreachable or returns a non-IG error, we fall back to
+ * the original direct fetch path transparently.
+ *
+ * Set it in the extension's settings or via:
+ *   chrome.storage.local.set({ 'pf-proxy-url': 'https://pf-profile-proxy.YOUR_SUBDOMAIN.workers.dev' })
+ */
+
+const PROXY_STORAGE_KEY = 'pf-proxy-url';
+let cachedProxyUrl = null;
+let proxyUrlLoaded = false;
+
+async function getProxyUrl() {
+  if (proxyUrlLoaded) return cachedProxyUrl;
+  try {
+    const o = await chrome.storage.local.get(PROXY_STORAGE_KEY);
+    cachedProxyUrl = o?.[PROXY_STORAGE_KEY] || null;
+  } catch (_) {
+    cachedProxyUrl = null;
+  }
+  proxyUrlLoaded = true;
+  return cachedProxyUrl;
+}
+
+/** Allow settings UI to update the proxy URL at runtime. */
+export function setProxyUrl(url) {
+  cachedProxyUrl = url || null;
+  proxyUrlLoaded = true;
+  try { chrome.storage.local.set({ [PROXY_STORAGE_KEY]: cachedProxyUrl }); } catch (_) {}
+}
+
 export function normalizeEnriched(user) {
   if (!user) return null;
   return {
@@ -42,10 +82,76 @@ export function normalizeEnriched(user) {
  * retry, just a permanently "running" pump. Always bound the wait.
  */
 const FETCH_TIMEOUT_MS = 15_000;
+const PROXY_TIMEOUT_MS = 20_000; // Proxy has its own 12s IG timeout + overhead
 
 // Last upstream fault, so a tripped breaker can explain itself.
 let lastFault = null;
 export function lastUpstreamFault() { return lastFault; }
+
+// Proxy stats for the dashboard
+let proxyStats = { hits: 0, misses: 0, fallbacks: 0, errors: 0, cached: 0 };
+export function getProxyStats() { return { ...proxyStats }; }
+
+/**
+ * Try fetching via the Cloudflare Worker proxy.
+ * Returns null if proxy is not configured, unreachable, or returns a non-IG error.
+ * Returns the standard { ok, status, user, retryAfterMs } shape on success or IG errors.
+ */
+async function fetchViaProxy(username) {
+  const proxyUrl = await getProxyUrl();
+  if (!proxyUrl) return null;
+
+  const url = `${proxyUrl.replace(/\/$/, '')}/profile?username=${encodeURIComponent(username)}`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), PROXY_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      // Proxy-level error (not IG) — fall through to direct fetch
+      if (res.status >= 500) {
+        proxyStats.errors++;
+        log.warn('enricher', `proxy ${res.status} for ${username}, falling back`);
+        return null;
+      }
+      // IG-originated error from the proxy
+      const body = await res.json().catch(() => ({}));
+      proxyStats.misses++;
+      return {
+        ok: false,
+        status: body.status || res.status,
+        retryAfterMs: body.retryAfterMs || 0,
+      };
+    }
+
+    const body = await res.json();
+
+    // Cached response from KV — zero IG cost
+    if (body.cached) {
+      proxyStats.cached++;
+      log.info('enricher', `proxy cache hit: ${username}`);
+    } else {
+      proxyStats.hits++;
+    }
+
+    if (!body.ok) {
+      return { ok: false, status: body.status || 0, retryAfterMs: body.retryAfterMs || 0 };
+    }
+
+    // The proxy returns the full user object from IG's response
+    return { ok: true, status: 200, user: body.user };
+  } catch (e) {
+    clearTimeout(timer);
+    proxyStats.errors++;
+    log.warn('enricher', `proxy fetch failed for ${username}: ${e?.message}, falling back`);
+    return null; // Signal: use direct fetch
+  }
+}
 
 /**
  * Ask a live instagram.com tab to run the request for us.
@@ -84,7 +190,11 @@ async function fetchViaTab(url) {
 export async function fetchProfile(username) {
   const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
 
-  // Prefer the authenticated same-origin path.
+  // ── 1. Try the Cloudflare Worker proxy (fastest path, may be cached) ──
+  const viaProxy = await fetchViaProxy(username);
+  if (viaProxy) return viaProxy;
+
+  // ── 2. Try the authenticated same-origin tab path ────────────────────
   const viaTab = await fetchViaTab(url);
   if (viaTab && viaTab.ok) {
     const user = viaTab.body?.data?.user;

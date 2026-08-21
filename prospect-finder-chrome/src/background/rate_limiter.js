@@ -1,5 +1,5 @@
 /**
- * rate_limiter.js — Adaptive pacing + circuit breaker.
+ * rate_limiter.js — Adaptive pacing + circuit breaker + predictive throttle.
  *
  * State REALLY persists in chrome.storage.session now. It previously only
  * claimed to: both classes were plain module variables, and Chrome evicts an
@@ -9,6 +9,12 @@
  * elapse. Measured effect: a permanent freeze at 20/60 with a 52% 429 rate.
  *
  * A cooldown that does not outlive the process is not a cooldown.
+ *
+ * NEW: Predictive throttle — tracks the rolling average time between
+ * successful requests. When the interval drops below what Instagram tolerates
+ * (~3s observed), the limiter pre-emptively slows down BEFORE a 429 arrives.
+ * This turns the reactive "hit wall → back off → hit wall" cycle into a
+ * smooth approach that stays under the limit.
  */
 
 import { sleep, jitter } from '../lib/utils.js';
@@ -44,6 +50,17 @@ export class AdaptiveRateLimiter {
     this.errors = 0;
     this.count = 0;
     this.windowStart = Date.now();
+
+    // ── Predictive throttle ───────────────────────────────────────────────
+    // Track the rolling average time between successful IG requests.
+    // Instagram's observed tolerance is ~3s between requests on a single
+    // session. When our interval drops below that, we pre-emptively increase
+    // the delay to stay under the radar.
+    this._lastSuccessAt = 0;
+    this._intervals = [];        // circular buffer of recent intervals
+    this._intervalIdx = 0;
+    this._INTERVAL_WINDOW = 10;  // track last 10 intervals
+    this._IG_TOLERANCE_MS = 3000; // observed minimum interval IG accepts
   }
 
   /**
@@ -68,12 +85,17 @@ export class AdaptiveRateLimiter {
     if (typeof st.windowStart === 'number') this.windowStart = st.windowStart;
     if (typeof st.count === 'number') this.count = st.count;
     if (typeof st.current === 'number') this.current = st.current;
+    // Restore predictive throttle state
+    if (typeof st.lastSuccessAt === 'number') this._lastSuccessAt = st.lastSuccessAt;
+    if (Array.isArray(st.intervals)) this._intervals = st.intervals;
+    if (typeof st.intervalIdx === 'number') this._intervalIdx = st.intervalIdx;
     return this;
   }
 
   async persist() {
     await writeKey(LIMITER_KEY, {
       windowStart: this.windowStart, count: this.count, current: this.current,
+      lastSuccessAt: this._lastSuccessAt, intervals: this._intervals, intervalIdx: this._intervalIdx,
     });
   }
 
@@ -102,8 +124,35 @@ export class AdaptiveRateLimiter {
 
   reportSuccess() {
     this.errors = 0;
+
+    // ── Predictive throttle: track interval between successes ────────────
+    const now = Date.now();
+    if (this._lastSuccessAt > 0) {
+      const interval = now - this._lastSuccessAt;
+      this._intervals[this._intervalIdx % this._INTERVAL_WINDOW] = interval;
+      this._intervalIdx++;
+
+      // If we're consistently faster than IG tolerates, slow down proactively
+      const avg = this._avgInterval();
+      if (avg > 0 && avg < this._IG_TOLERANCE_MS && this._intervalIdx >= 3) {
+        // Boost the delay to respect IG's pace — don't wait for a 429
+        const target = this._IG_TOLERANCE_MS * 1.15; // 15% headroom
+        this.current = Math.max(this.current, target);
+      }
+    }
+    this._lastSuccessAt = now;
+
     this.current = Math.max(this.base, this.current * 0.9);
     void this.persist();
+  }
+
+  /** Rolling average of recent request intervals. */
+  _avgInterval() {
+    const n = Math.min(this._intervalIdx, this._INTERVAL_WINDOW);
+    if (n < 2) return 0;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += this._intervals[i];
+    return sum / n;
   }
 
   reportError(status) {
@@ -114,7 +163,13 @@ export class AdaptiveRateLimiter {
   }
 
   snapshot() {
-    return { currentDelay: Math.round(this.current), errors: this.errors, thisMinute: this.count };
+    return {
+      currentDelay: Math.round(this.current),
+      errors: this.errors,
+      thisMinute: this.count,
+      avgIntervalMs: Math.round(this._avgInterval()),
+      predictive: this._intervalIdx >= 3 && this._avgInterval() > 0 && this._avgInterval() < this._IG_TOLERANCE_MS,
+    };
   }
 }
 

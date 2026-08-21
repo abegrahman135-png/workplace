@@ -14,7 +14,7 @@
  */
 
 import { claimBatch, completeJob, failJob, deferJob, queueDepth, requeueDead, makeJob } from '../db/repo.jobs.js';
-import { runEnrichJob, markFailed } from './enricher.js';
+import { runEnrichJob, markFailed, getProxyStats } from './enricher.js';
 import { AdaptiveRateLimiter, CircuitBreaker } from './rate_limiter.js';
 import { loadSettings } from '../db/repo.settings.js';
 import { db, STORES } from '../db/schema.js';
@@ -77,6 +77,8 @@ export function schedulerHealth() {
     breaker: breaker?.snapshot() || null,
     // Surface a silently-degraded vision layer instead of hiding it.
     visual: visualHealth(),
+    // Proxy stats for the dashboard
+    proxy: getProxyStats(),
   };
 }
 

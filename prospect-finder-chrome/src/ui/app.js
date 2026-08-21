@@ -465,11 +465,30 @@ async function renderSessions() {
 async function renderHealth() {
   const q = await queueDepth();
   const stats = await readStats();
+  let proxyHtml = '';
+  try {
+    const s = await chrome.runtime.sendMessage({ type: MSG.GET_STATUS });
+    const p = s?.health?.proxy;
+    if (p && (p.hits || p.cached || p.misses || p.fallbacks)) {
+      proxyHtml = `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line-1)">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">Proxy stats</div>
+          <div class="grid2">
+            <div class="field"><label>Cache hits</label><b style="font-size:14px;color:var(--success)">${p.cached}</b></div>
+            <div class="field"><label>IG fetches</label><b style="font-size:14px">${p.hits}</b></div>
+            <div class="field"><label>Coalesced</label><b style="font-size:14px">${p.misses}</b></div>
+            <div class="field"><label>Fallbacks</label><b style="font-size:14px;color:var(--warn)">${p.fallbacks}</b></div>
+          </div>
+        </div>`;
+    }
+  } catch (_) {}
+
   $('health').innerHTML = `
     <div class="field"><label>Queued</label><b style="font-size:18px">${q.pending.toLocaleString()}</b></div>
     <div class="field"><label>In flight</label><b style="font-size:18px">${q.leased}</b></div>
     <div class="field"><label>Needs retry</label><b style="font-size:18px;color:var(--warn)">${q.dead}</b></div>
-    <div class="field"><label>Enriched</label><b style="font-size:18px;color:var(--success)">${(stats.enriched || 0).toLocaleString()}</b></div>`;
+    <div class="field"><label>Enriched</label><b style="font-size:18px;color:var(--success)">${(stats.enriched || 0).toLocaleString()}</b></div>
+    ${proxyHtml}`;
 }
 
 function renderWeights() {
@@ -507,6 +526,66 @@ function fillSettings() {
   $('set-visualfast').checked = !!s.visualFastLaneOnly;
   $('set-purge').value = s.autoPurgeDays ?? 0;
   renderWeights();
+  loadProxySettings();
+}
+
+// ── Proxy settings ──────────────────────────────────────────────────────────
+const PROXY_STORAGE_KEY = 'pf-proxy-url';
+
+async function loadProxySettings() {
+  try {
+    const o = await chrome.storage.local.get(PROXY_STORAGE_KEY);
+    $('set-proxy-url').value = o?.[PROXY_STORAGE_KEY] || '';
+    updateProxyStatus();
+  } catch (_) {}
+}
+
+function updateProxyStatus() {
+  const url = $('set-proxy-url').value.trim();
+  const el = $('proxy-status');
+  if (!url) {
+    el.innerHTML = '<span style="color:var(--fg-2)">⚪ Direct mode — requests go through your browser</span>';
+  } else {
+    el.innerHTML = '<span style="color:var(--info)">🔵 Proxy configured — requests route through proxy</span>';
+  }
+}
+
+async function testProxy() {
+  const url = $('set-proxy-url').value.trim();
+  if (!url) { toast('Enter a proxy URL first', 'error'); return; }
+
+  const el = $('proxy-status');
+  el.innerHTML = '<span style="color:var(--fg-2)">⏳ Testing…</span>';
+
+  try {
+    const res = await fetch(`${url.replace(/\/$/, '')}/health`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.ok) {
+      const sessions = data.sessions || 0;
+      const cached = data.cached || '0';
+      el.innerHTML = `<span style="color:var(--success)">✅ Connected — ${sessions} session(s), ${cached} cached profiles</span>`;
+    } else {
+      el.innerHTML = '<span style="color:var(--warn)">⚠️ Proxy responded but not healthy</span>';
+    }
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--danger)">❌ ${e.message || 'Connection failed'}</span>`;
+  }
+}
+
+async function saveProxySettings() {
+  const url = $('set-proxy-url').value.trim();
+  try {
+    if (url) {
+      await chrome.storage.local.set({ [PROXY_STORAGE_KEY]: url });
+    } else {
+      await chrome.storage.local.remove(PROXY_STORAGE_KEY);
+    }
+    // Notify the background worker
+    try { await chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED' }); } catch (_) {}
+  } catch (_) {}
 }
 
 async function doSaveSettings() {
@@ -735,7 +814,10 @@ async function init() {
   $('btn-retry2').onclick = retryFailed;
   $('btn-pump').onclick = pumpNow;
   $('btn-rescore').onclick = rescore;
-  $('btn-save').onclick = doSaveSettings;
+  $('btn-save').onclick = async () => { await saveProxySettings(); doSaveSettings(); };
+  $('btn-proxy-test').onclick = testProxy;
+  $('btn-proxy-clear').onclick = async () => { $('set-proxy-url').value = ''; updateProxyStatus(); };
+  $('set-proxy-url').addEventListener('input', updateProxyStatus);
 
   $('btn-selall').onclick = () => {
     state.rows.forEach(p => state.selected.add(p.username));
