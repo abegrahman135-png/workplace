@@ -93,17 +93,16 @@ let proxyStats = { hits: 0, misses: 0, fallbacks: 0, errors: 0, cached: 0 };
 export function getProxyStats() { return { ...proxyStats }; }
 
 /**
- * Try fetching via the Cloudflare Worker proxy.
- * Returns null if proxy is not configured, unreachable, or returns a non-IG error.
- * Returns the standard { ok, status, user, retryAfterMs } shape on success or IG errors.
+ * Try fetching from the Cloudflare Worker cache.
+ * Returns null if proxy is not configured or cache miss.
  */
-async function fetchViaProxy(username) {
+async function fetchFromCache(username) {
   const proxyUrl = await getProxyUrl();
   if (!proxyUrl) return null;
 
   const url = `${proxyUrl.replace(/\/$/, '')}/profile?username=${encodeURIComponent(username)}`;
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), PROXY_TIMEOUT_MS);
+  const timer = setTimeout(() => ac.abort(), 8_000);
 
   try {
     const res = await fetch(url, {
@@ -112,45 +111,33 @@ async function fetchViaProxy(username) {
     });
     clearTimeout(timer);
 
-    if (!res.ok) {
-      // Proxy-level error (not IG) — fall through to direct fetch
-      if (res.status >= 500) {
-        proxyStats.errors++;
-        log.warn('enricher', `proxy ${res.status} for ${username}, falling back`);
-        return null;
-      }
-      // IG-originated error from the proxy
-      const body = await res.json().catch(() => ({}));
-      proxyStats.misses++;
-      return {
-        ok: false,
-        status: body.status || res.status,
-        retryAfterMs: body.retryAfterMs || 0,
-      };
-    }
-
+    if (!res.ok) return null;
     const body = await res.json();
+    if (!body.ok || !body.cached || !body.user) return null;
 
-    // Cached response from KV — zero IG cost
-    if (body.cached) {
-      proxyStats.cached++;
-      log.info('enricher', `proxy cache hit: ${username}`);
-    } else {
-      proxyStats.hits++;
-    }
-
-    if (!body.ok) {
-      return { ok: false, status: body.status || 0, retryAfterMs: body.retryAfterMs || 0 };
-    }
-
-    // The proxy returns the full user object from IG's response
+    proxyStats.cached++;
+    log.info('enricher', `cache hit: ${username}`);
     return { ok: true, status: 200, user: body.user };
-  } catch (e) {
+  } catch (_) {
     clearTimeout(timer);
-    proxyStats.errors++;
-    log.warn('enricher', `proxy fetch failed for ${username}: ${e?.message}, falling back`);
-    return null; // Signal: use direct fetch
+    return null;
   }
+}
+
+/**
+ * Push a successfully fetched profile to the Worker cache for future requests.
+ * Fire-and-forget — never blocks enrichment.
+ */
+function pushToCache(username, user) {
+  getProxyUrl().then(proxyUrl => {
+    if (!proxyUrl) return;
+    const url = `${proxyUrl.replace(/\/$/, '')}/profile`;
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, user }),
+    }).catch(() => {}); // fire-and-forget
+  }).catch(() => {});
 }
 
 /**
@@ -190,15 +177,17 @@ async function fetchViaTab(url) {
 export async function fetchProfile(username) {
   const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
 
-  // ── 1. Try the Cloudflare Worker proxy (fastest path, may be cached) ──
-  const viaProxy = await fetchViaProxy(username);
-  if (viaProxy) return viaProxy;
+  // ── 1. Try the Worker cache (instant, zero IG cost) ───────────────────
+  const fromCache = await fetchFromCache(username);
+  if (fromCache) return fromCache;
 
   // ── 2. Try the authenticated same-origin tab path ────────────────────
   const viaTab = await fetchViaTab(url);
   if (viaTab && viaTab.ok) {
     const user = viaTab.body?.data?.user;
     if (!user) return { ok: false, status: 404 };
+    // Push to cache for next time
+    pushToCache(username, user);
     return { ok: true, status: 200, user };
   }
   if (viaTab && (viaTab.status === 404 || viaTab.status === 429)) {
@@ -209,6 +198,7 @@ export async function fetchProfile(username) {
     };
   }
 
+  // ── 3. Direct fetch fallback ─────────────────────────────────────────
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   let res;
@@ -219,13 +209,11 @@ export async function fetchProfile(username) {
       signal: ac.signal,
     });
   } catch (e) {
-    // Aborted or network-level failure -> retryable, never fatal.
     return { ok: false, status: e?.name === 'AbortError' ? 408 : 0 };
   } finally {
     clearTimeout(timer);
   }
   if (!res.ok) {
-    // Instagram sometimes tells us exactly how long to wait. Obey it.
     const ra = Number(res.headers?.get?.('retry-after') || 0);
     return {
       ok: false,
@@ -238,6 +226,8 @@ export async function fetchProfile(username) {
   try { body = await res.json(); } catch { return { ok: false, status: 502 }; }
   const user = body?.data?.user;
   if (!user) return { ok: false, status: 404 };
+  // Push to cache
+  pushToCache(username, user);
   return { ok: true, status: 200, user };
 }
 
