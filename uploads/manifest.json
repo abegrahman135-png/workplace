@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Instagram Prospect Finder",
+  "description": "AI-powered female prospect discovery from Instagram follower lists — 100% local processing",
+  "version": "1.1.0",
+  "action": {
+    "default_title": "Instagram Prospect Finder",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "public/icons/icon-16.png",
+      "48": "public/icons/icon-48.png",
+      "128": "public/icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [{
+    "matches": ["https://www.instagram.com/*"],
+    "js": ["src/content.js"],
+    "run_at": "document_idle"
+  }],
+  "permissions": [
+    "storage", "tabs", "scripting", "alarms",
+    "notifications", "webNavigation"
+  ],
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
+  ],
+  "web_accessible_resources": [{
+    "resources": [
+      "public/interceptor.js",
+      "public/data/*",
+      "public/face-api/*",
+      "public/icons/*"
+    ],
+    "matches": ["https://www.instagram.com/*", "<all_urls>"]
+  }],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self';"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "ProspectFinder",
+  "version": "2.0.0",
+  "description": "Instagram prospect discovery with a durable local pipeline. 100% on-device processing.",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "ProspectFinder",
+    "default_popup": "src/ui/popup.html",
+    "default_icon": {
+      "16": "public/icons/icon-16.png",
+      "48": "public/icons/icon-48.png",
+      "128": "public/icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "public/icons/icon-16.png",
+    "48": "public/icons/icon-48.png",
+    "128": "public/icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "src/content/index.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "tabs",
+    "scripting",
+    "alarms",
+    "notifications",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "public/interceptor.js",
+        "public/data/*",
+        "public/icons/*",
+        "public/face-api/*",
+        "public/face-api/models/*"
+      ],
+      "matches": [
+        "https://www.instagram.com/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'; img-src 'self' blob: data: https://*.cdninstagram.com https://*.fbcdn.net;"
+  }
+}

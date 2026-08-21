@@ -1,0 +1,32 @@
+[
+  {
+    "username": "jane_doe",
+    "fullName": "Jane Doe",
+    "biography": "Designer and local community volunteer",
+    "postCount": 147,
+    "followerCount": 823,
+    "followingCount": 412,
+    "isPrivate": true,
+    "isVerified": false,
+    "isBusinessAccount": false,
+    "isProfessionalAccount": false,
+    "mutualCount": 4,
+    "activityLevel": "high",
+    "sourceUsernames": ["design-community", "local-creators"]
+  },
+  {
+    "username": "creative_studio",
+    "fullName": "Creative Studio",
+    "biography": "Brand identity and content services",
+    "postCount": 82,
+    "followerCount": 4200,
+    "followingCount": 530,
+    "isPrivate": false,
+    "isVerified": false,
+    "isBusinessAccount": true,
+    "isProfessionalAccount": true,
+    "mutualCount": 1,
+    "activityLevel": "moderate",
+    "sourceUsernames": ["design-community"]
+  }
+]

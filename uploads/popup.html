@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prospect Finder</title>
+  <link rel="stylesheet" href="public/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body.popup {
+      width: 320px;
+      height: 480px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background-color: var(--bg-color, #0f172a);
+      color: var(--text-color, #f8fafc);
+      font-family: 'Inter', sans-serif;
+    }
+    
+    .popup-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color, #1e293b);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background-color: var(--card-bg, #1e293b);
+    }
+    
+    .popup-logo {
+      font-size: 24px;
+    }
+    
+    .popup-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+    
+    .popup-content {
+      flex: 1;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    
+    /* State Management */
+    .state-panel {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      height: 100%;
+      justify-content: center;
+    }
+    
+    .app-container.state-not-instagram .panel-not-instagram,
+    .app-container.state-on-feed .panel-on-feed,
+    .app-container.state-profile-detected .panel-profile-detected,
+    .app-container.state-digging .panel-digging,
+    .app-container.state-paused .panel-paused,
+    .app-container.state-complete .panel-complete {
+      display: flex;
+    }
+    
+    .state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.8;
+    }
+    
+    .state-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0 0 8px 0;
+    }
+    
+    .state-desc {
+      font-size: 14px;
+      color: var(--text-muted, #94a3b8);
+      margin: 0 0 24px 0;
+      line-height: 1.5;
+    }
+    
+    .username-highlight {
+      color: var(--primary-color, #3b82f6);
+      font-weight: 600;
+    }
+    
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    
+    .btn-primary:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border-color, #334155);
+      color: var(--text-color, #f8fafc);
+    }
+    
+    .btn-ghost:hover {
+      background: var(--hover-color, #1e293b);
+    }
+    
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+    }
+    
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+    
+    .button-group .btn {
+      margin-bottom: 0;
+    }
+    
+    /* Progress */
+    .progress-container {
+      width: 100%;
+      margin: 20px 0;
+    }
+    
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: var(--border-color, #1e293b);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    
+    .progress-text {
+      font-size: 13px;
+      color: var(--text-muted, #94a3b8);
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+      margin-bottom: 24px;
+    }
+    
+    .stat-card {
+      background: var(--card-bg, #1e293b);
+      border: 1px solid var(--border-color, #334155);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: left;
+    }
+    
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted, #94a3b8);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-high-priority .stat-value {
+      color: #10b981;
+    }
+    
+    /* Footer */
+    .popup-footer {
+      padding: 16px;
+      border-top: 1px solid var(--border-color, #1e293b);
+      background-color: var(--card-bg, #1e293b);
+    }
+  </style>
+</head>
+<body class="popup">
+  <div class="popup-header">
+    <div class="popup-logo">✦</div>
+    <h1 class="popup-title">Prospect Finder</h1>
+  </div>
+  
+  <div id="app" class="app-container state-not-instagram popup-content">
+    
+    <!-- State: Not Instagram -->
+    <div class="state-panel panel-not-instagram">
+      <div class="state-icon">📱</div>
+      <h2 class="state-title">Not on Instagram</h2>
+      <p class="state-desc">Navigate to an Instagram profile to start finding prospects.</p>
+      <button id="btn-goto-ig" class="btn btn-primary">Open Instagram</button>
+    </div>
+    
+    <!-- State: On Feed -->
+    <div class="state-panel panel-on-feed">
+      <div class="state-icon">🔍</div>
+      <h2 class="state-title">Ready to Dig</h2>
+      <p class="state-desc">Visit a specific profile to start scanning their followers or following.</p>
+    </div>
+    
+    <!-- State: Profile Detected -->
+    <div class="state-panel panel-profile-detected">
+      <div class="state-icon">🎯</div>
+      <h2 class="state-title">Profile Detected</h2>
+      <p class="state-desc">Target: <span id="target-username" class="username-highlight">@username</span></p>
+      <button id="btn-dig-followers" class="btn btn-primary">Dig Followers</button>
+      <button id="btn-dig-following" class="btn btn-ghost">Dig Following</button>
+    </div>
+    
+    <!-- State: Digging -->
+    <div class="state-panel panel-digging">
+      <div class="state-icon" style="animation: pulse 1.5s infinite;">⏳</div>
+      <h2 class="state-title">Scanning...</h2>
+      <p class="state-desc">Digging <span id="dig-type-label">followers</span> of <span id="active-username" class="username-highlight">@username</span></p>
+      
+      <div class="stats-grid">
+        <div class="stat-card stat-high-priority">
+          <div id="stat-high" class="stat-value">0</div>
+          <div class="stat-label">High Priority</div>
+        </div>
+        <div class="stat-card">
+          <div id="stat-scanned" class="stat-value">0</div>
+          <div class="stat-label">Total Scanned</div>
+        </div>
+      </div>
+      
+      <div class="progress-container">
+        <div class="progress-bar-bg">
+          <div id="progress-fill" class="progress-bar-fill"></div>
+        </div>
+        <div class="progress-text">
+          <span id="progress-count">0 / ~0</span>
+          <span id="progress-percent">0%</span>
+        </div>
+      </div>
+      
+      <div class="button-group">
+        <button id="btn-pause" class="btn btn-ghost">Pause</button>
+        <button id="btn-stop" class="btn btn-danger">Stop</button>
+      </div>
+    </div>
+    
+    <!-- State: Paused -->
+    <div class="state-panel panel-paused">
+      <div class="state-icon">⏸️</div>
+      <h2 class="state-title">Paused</h2>
+      <p class="state-desc">Paused at <span id="pause-count">0</span> profiles.</p>
+      <button id="btn-resume" class="btn btn-primary">Resume Dig</button>
+      <button id="btn-stop-paused" class="btn btn-danger">Stop Completely</button>
+    </div>
+    
+    <!-- State: Complete -->
+    <div class="state-panel panel-complete">
+      <div class="state-icon">✅</div>
+      <h2 class="state-title">Done!</h2>
+      <p class="state-desc"><span id="complete-high" class="username-highlight">0</span> high priority found out of <span id="complete-total">0</span> scanned.</p>
+    </div>
+    
+  </div>
+  
+  <div class="popup-footer">
+    <button id="btn-dashboard" class="btn btn-ghost" style="margin: 0;">Open Dashboard <span id="dash-badge" style="display:none; background:#3b82f6; color:white; padding:2px 6px; border-radius:10px; font-size:11px; margin-left:6px;">0</span></button>
+  </div>
+  
+  <script type="module" src="src/popup.js"></script>
+</body>
+</html>

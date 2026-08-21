@@ -1,0 +1,37 @@
+[
+  {
+    "username": "",
+    "full_name": "blank username",
+    "is_private": true
+  },
+  {
+    "username": "no_name_at_all",
+    "full_name": "",
+    "is_private": false
+  },
+  {
+    "username": "UPPER_Case_User",
+    "full_name": "Upper Case",
+    "is_private": true
+  },
+  {
+    "username": "emoji_name_x",
+    "full_name": "✨ Star ✨",
+    "is_private": true
+  },
+  {
+    "username": "veryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryvery",
+    "full_name": "Overlong Slug",
+    "is_private": false
+  },
+  {
+    "username": "zero_posts_user",
+    "full_name": "Zero Posts",
+    "is_private": true
+  },
+  {
+    "username": "null_metrics",
+    "full_name": null,
+    "is_private": null
+  }
+]

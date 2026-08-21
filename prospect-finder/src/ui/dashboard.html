@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-density="comfortable">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProspectFinder</title>
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="brand"><span class="brand-gem"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 1.6 1.6 4.3 4.3 1.6-4.3 1.6L8 13.4 6.4 9.1 2.1 7.5l4.3-1.6Z"/></svg></span>ProspectFinder</div>
+    <nav class="nav" role="tablist">
+      <button class="nav-tab active" data-panel="results" role="tab">Results</button>
+      <button class="nav-tab" data-panel="sessions" role="tab">Sessions</button>
+      <button class="nav-tab" data-panel="settings" role="tab">Settings</button>
+    </nav>
+    <div class="hdr-right">
+      <button class="icobtn" id="btn-palette" title="Command palette (Ctrl+K)">⌘</button>
+      <button class="icobtn" id="btn-theme" title="Toggle theme">◐</button>
+      <button class="icobtn" id="btn-density" title="Toggle density">▤</button>
+      <button class="btn btn-sm btn-primary" id="btn-export"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v8.2M4.6 7.6 8 11l3.4-3.4M2.8 13.4h10.4"/></svg><span>Export</span></button>
+    </div>
+  </header>
+
+  <!-- Live rail -->
+  <div class="rail" role="region" aria-label="Pipeline status" aria-live="polite">
+    <div class="rail-stat"><b id="s-total">0</b><span>discovered</span></div>
+    <div class="rail-sep"></div>
+    <div class="rail-stat"><b id="s-enriched">0</b><span>enriched</span></div>
+    <div class="rail-sep"></div>
+    <div class="rail-stat"><b id="s-high" style="color:var(--hot)">0</b><span>high priority</span></div>
+    <div class="rail-sep"></div>
+    <div class="rail-stat"><b id="s-qualified" style="color:var(--success)">0</b><span>qualified</span></div>
+    <div class="rail-sep"></div>
+    <div class="rail-stat"><b id="s-failed" style="color:var(--warn)">0</b><span>need retry</span></div>
+
+    <div class="rail-pipe">
+      <span class="dot" id="pipe-dot"></span>
+      <span id="pipe-txt" style="color:var(--fg-2);font-size:11.5px">Idle</span>
+      <div class="pipebar"><div class="pipebar-fill" id="pipe-fill"></div></div>
+      <button class="btn btn-sm" id="btn-retry" title="Re-queue failed profiles"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.3 6.1 2.5 9.2a1 1 0 0 0 .9 1.5h2.2M11.7 6.1l1.8 3.1a1 1 0 0 1-.9 1.5h-3.4M6.5 3.3 8 1.7l1.5 1.6"/><path d="M6.2 12.9 8 14.3M5.6 10.7l-1.2 2"/></svg><span>Retry</span></button>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- ══════════════ RESULTS ══════════════ -->
+    <section class="panel active" id="panel-results">
+      <aside class="side" id="sidebar">
+        <div class="side-group">
+          <div class="side-title">Saved views</div>
+          <div id="views"></div>
+        </div>
+
+        <div class="side-group">
+          <div class="side-title">
+            Filters
+            <button id="btn-clear-filters" type="button">Reset</button>
+          </div>
+
+          <div class="field">
+            <label>Privacy</label>
+            <div class="seg" id="seg-privacy">
+              <button class="active" data-v="all">All</button>
+              <button data-v="private"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.2" y="7" width="9.6" height="6.6" rx="1.4"/><path d="M5.6 7V5.2a2.4 2.4 0 0 1 4.8 0V7"/></svg><span>Private</span></button>
+              <button data-v="public"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.3"/><path d="M2 8h12M8 1.8a12 12 0 0 1 0 12.4A12 12 0 0 1 8 1.8Z"/></svg><span>Public</span></button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Gender verdict</label>
+            <select id="f-verdict">
+              <option value="">Any</option>
+              <option value="likely_female">Likely female</option>
+              <option value="ambiguous">Ambiguous</option>
+              <option value="unknown">Unknown (needs review)</option>
+              <option value="likely_male">Likely male</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Min confidence — <span id="conf-v">0%</span></label>
+            <input type="range" id="f-conf" min="0" max="100" step="5" value="0">
+          </div>
+
+          <div class="field">
+            <label>Posts</label>
+            <div class="row2">
+              <input type="number" id="f-posts-min" placeholder="Min" min="0">
+              <input type="number" id="f-posts-max" placeholder="Max" min="0">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Followers</label>
+            <div class="row2">
+              <input type="number" id="f-foll-min" placeholder="Min" min="0">
+              <input type="number" id="f-foll-max" placeholder="Max" min="0">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Following</label>
+            <div class="row2">
+              <input type="number" id="f-fing-min" placeholder="Min" min="0">
+              <input type="number" id="f-fing-max" placeholder="Max" min="0">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Min follower/following ratio</label>
+            <input type="number" id="f-ratio" placeholder="e.g. 0.5" step="0.1" min="0">
+          </div>
+
+          <div class="field">
+            <label>Account type</label>
+            <select id="f-acctype">
+              <option value="">Any</option>
+              <option value="Personal">Personal</option>
+              <option value="Creator">Creator</option>
+              <option value="Business">Business</option>
+              <option value="Public Figure">Public Figure</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Exclude bio keywords</label>
+            <input type="text" id="f-exclude" placeholder="shop, promo, dm to order">
+          </div>
+
+          <div class="field">
+            <label>Source account</label>
+            <input type="text" id="f-source" placeholder="@username scanned from">
+          </div>
+
+          <div class="field">
+            <label>Discovered within</label>
+            <select id="f-within">
+              <option value="">Any time</option>
+              <option value="1d">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+          </div>
+
+          <label class="chk"><input type="checkbox" id="f-single"> Hide taken / married</label>
+          <label class="chk"><input type="checkbox" id="f-noverified"> Hide verified</label>
+          <label class="chk"><input type="checkbox" id="f-nobusiness"> Hide business</label>
+          <label class="chk"><input type="checkbox" id="f-hastory"> Has active story</label>
+          <label class="chk"><input type="checkbox" id="f-multi"> Seen in 2+ lists</label>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="toolbar">
+          <div class="tabs" id="tabs">
+            <button class="tab active" data-label="">All <span class="n" id="n-all">0</span></button>
+            <button class="tab" data-label="high_priority"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.5s.6 2.2-.9 3.7C5.3 6.9 4 8.2 4 10a4 4 0 0 0 8 0c0-1.5-.7-2.6-1.5-3.4-.3 .8-.9 1.2-1.4 1.2.6-1.9.2-4.4-1.1-6.3Z"/></svg><span>High</span> <span class="n" id="n-high">0</span></button>
+            <button class="tab" data-label="qualified"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.3"/><path d="m5.4 8.2 1.8 1.8 3.4-3.7"/></svg><span>Qualified</span> <span class="n" id="n-qual">0</span></button>
+            <button class="tab" data-label="review"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.6 8S3.9 3.9 8 3.9 14.4 8 14.4 8 12.1 12.1 8 12.1 1.6 8 1.6 8Z"/><circle cx="8" cy="8" r="1.9"/></svg><span>Review</span> <span class="n" id="n-rev">0</span></button>
+            <button class="tab" data-label="pending">⏳ Queued <span class="n" id="n-pend">0</span></button>
+            <button class="tab" data-label="excluded"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.3"/><path d="m3.9 3.9 8.2 8.2"/></svg><span>Excluded</span> <span class="n" id="n-exc">0</span></button>
+            <button class="tab" data-label="__rejected"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.6 4.4h10.8M6.4 4.4V2.9h3.2v1.5M4.2 4.4l.7 8.6a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.6"/></svg><span>Removed</span> <span class="n" id="n-rej">0</span></button>
+          </div>
+
+          <div class="searchrow">
+            <button class="icobtn" id="btn-side" title="Toggle filters"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.4 4.4h11.2M2.4 8h11.2M2.4 11.6h11.2"/></svg></button>
+            <div class="searchwrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" id="search" placeholder="Search name, @username, bio…  try: private posts>50 !married" autocomplete="off" spellcheck="false">
+              <span class="kbd">Ctrl K</span>
+            </div>
+            <select id="sort" style="width:auto">
+              <option value="priority">Best match</option>
+              <option value="score">Score</option>
+              <option value="posts">Posts</option>
+              <option value="followers">Followers</option>
+              <option value="following">Following</option>
+              <option value="female">Female score</option>
+              <option value="ratio">Ratio</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+            <button class="btn btn-sm" id="btn-selall">Select page</button>
+          </div>
+
+          <div class="chips" id="chips">
+            <span class="resultcount" id="rescount">—</span>
+          </div>
+        </div>
+
+        <div class="scroller" id="scroller">
+          <div class="vspace" id="vspace"><div class="vwin" id="vwin"></div></div>
+          <div class="empty" id="empty" style="display:none">
+            <div class="empty-ico"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.2" cy="7.2" r="4.6"/><path d="m10.6 10.6 3 3"/></svg></div>
+            <h3>No prospects match</h3>
+            <p id="empty-msg">Adjust the filters on the left, or run a scan from the extension popup on an Instagram profile.</p>
+            <button class="btn btn-sm" id="btn-empty-reset">Reset filters</button>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- ══════════════ SESSIONS ══════════════ -->
+    <section class="panel" id="panel-sessions">
+      <div class="pane"><div class="pane-inner">
+        <div class="card-box">
+          <h3>Pipeline health</h3>
+          <div class="sub">The queue is durable — it survives browser restarts and resumes automatically.</div>
+          <div class="grid2" id="health"></div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-sm" id="btn-pump"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.6 2.9 12.8 8l-8.2 5.1Z"/></svg><span>Process queue now</span></button>
+            <button class="btn btn-sm" id="btn-retry2"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.3 6.1 2.5 9.2a1 1 0 0 0 .9 1.5h2.2M11.7 6.1l1.8 3.1a1 1 0 0 1-.9 1.5h-3.4M6.5 3.3 8 1.7l1.5 1.6"/><path d="M6.2 12.9 8 14.3M5.6 10.7l-1.2 2"/></svg><span>Retry failed</span></button>
+            <button class="btn btn-sm" id="btn-rescore">⟳ Re-score all</button>
+          </div>
+        </div>
+        <div class="card-box">
+          <h3>Scan sessions</h3>
+          <div class="sub">Every scan and its ingest accounting.</div>
+          <div id="sessions"></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- ══════════════ SETTINGS ══════════════ -->
+    <section class="panel" id="panel-settings">
+      <div class="pane"><div class="pane-inner">
+        <div class="card-box">
+          <h3>Scoring weights</h3>
+          <div class="sub">100 points total. Gender and privacy are modifiers, not point sources.</div>
+          <div id="weights" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+
+        <div class="card-box">
+          <h3>Qualification thresholds</h3>
+          <div class="sub">These label prospects — they never delete them.</div>
+          <div class="grid2">
+            <div class="field"><label>Min posts</label><input type="number" id="set-minposts"></div>
+            <div class="field"><label>Min female score</label><input type="number" id="set-minfemale"></div>
+            <div class="field"><label>Min followers</label><input type="number" id="set-minfoll"></div>
+            <div class="field"><label>Max followers</label><input type="number" id="set-maxfoll" placeholder="no cap"></div>
+            <div class="field"><label>Min following</label><input type="number" id="set-minfing"></div>
+            <div class="field"><label>Max following</label><input type="number" id="set-maxfing" placeholder="no cap"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+            <label class="chk"><input type="checkbox" id="set-exverified"> Down-rank verified accounts</label>
+            <label class="chk"><input type="checkbox" id="set-exbusiness"> Down-rank business accounts</label>
+          </div>
+        </div>
+
+        <div class="card-box">
+          <h3>Pipeline</h3>
+          <div class="sub">Slower settings are gentler on rate limits.</div>
+          <div class="grid2">
+            <div class="field"><label>Concurrent enrichments</label><input type="number" id="set-conc" min="1" max="6"></div>
+            <div class="field"><label>Requests / minute cap</label><input type="number" id="set-cap" min="5" max="60"></div>
+            <div class="field"><label>Base delay (ms)</label><input type="number" id="set-delay" min="500"></div>
+            <div class="field"><label>Max profiles / scan</label><input type="number" id="set-maxprof" min="50"></div>
+          </div>
+        </div>
+
+        <div class="card-box">
+          <h3>Profile-photo analysis</h3>
+          <div class="warnbox" style="margin-bottom:11px">
+            <b><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.1 2.6 1.5 12a1 1 0 0 0 .9 1.5h11.2a1 1 0 0 0 .9-1.5L8.9 2.6a1 1 0 0 0-1.8 0Z"/><path d="M8 6.4v2.8"/><circle cx="8" cy="11.3" r=".8" fill="currentColor" stroke="none"/></svg> Read before enabling.</b> This downloads each profile picture and runs
+            local face-based gender inference. That is biometric processing of people who
+            have not consented — special-category data under GDPR Art. 9, and separately
+            regulated by Illinois BIPA, which carries statutory damages per violation.
+            It is off by default. Enable only if you have a lawful basis.
+          </div>
+          <label class="chk"><input type="checkbox" id="set-visual"> Enable profile-photo gender inference</label>
+          <label class="chk" style="margin-top:7px"><input type="checkbox" id="set-visualfast"> Restrict to high-priority lane only (recommended)</label>
+        </div>
+
+        <div class="card-box">
+          <h3>Data & retention</h3>
+          <div class="sub">Everything is stored locally in this browser. Nothing is uploaded.</div>
+          <div class="field" style="max-width:260px"><label>Auto-purge records older than (days, 0 = never)</label><input type="number" id="set-purge" min="0"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn btn-sm" id="btn-backup"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.6v8.2M4.6 7.6 8 11l3.4-3.4M2.8 13.4h10.4"/></svg><span>Full JSON backup</span></button>
+            <button class="btn btn-sm btn-danger" id="btn-clear-rejected">Clear removed</button>
+            <button class="btn btn-sm btn-danger" id="btn-wipe"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.1 2.6 1.5 12a1 1 0 0 0 .9 1.5h11.2a1 1 0 0 0 .9-1.5L8.9 2.6a1 1 0 0 0-1.8 0Z"/><path d="M8 6.4v2.8"/><circle cx="8" cy="11.3" r=".8" fill="currentColor" stroke="none"/></svg><span>Delete all data</span></button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-primary" id="btn-save">Save settings</button>
+        </div>
+      </div></div>
+    </section>
+  </div>
+
+  <!-- Selection dock -->
+  <div class="dock" id="dock">
+    <span class="dock-n"><b id="dock-n">0</b> selected</span>
+    <button class="btn btn-sm" id="dk-open">Open all</button>
+    <button class="btn btn-sm" id="dk-export">Export</button>
+    <button class="btn btn-sm btn-success" id="dk-followed">Mark followed</button>
+    <button class="btn btn-sm btn-danger" id="dk-remove">Remove</button>
+    <button class="btn btn-sm btn-ghost" id="dk-clear"><svg class="ico" viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
+  </div>
+</div>
+
+<!-- Command palette -->
+<div class="mask" id="pal-mask">
+  <div class="modal" style="width:min(560px,92vw)">
+    <input class="pal-input" id="pal-input" placeholder="Search or type a command…  private posts>50 @target !married" autocomplete="off">
+    <div class="pal-list" id="pal-list"></div>
+  </div>
+</div>
+
+<!-- Why modal -->
+<div class="mask" id="why-mask">
+  <div class="modal">
+    <div class="modal-hd"><h3 id="why-title">Score breakdown</h3></div>
+    <div class="modal-bd" id="why-body"></div>
+    <div class="modal-ft"><button class="btn" id="why-close">Close</button></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
