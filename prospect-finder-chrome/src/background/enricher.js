@@ -32,19 +32,29 @@ import { hashStr } from '../lib/utils.js';
  */
 
 const PROXY_STORAGE_KEY = 'pf-proxy-url';
+const BACKEND_STORAGE_KEY = 'pf-backend-url';
 let cachedProxyUrl = null;
+let cachedBackendUrl = null;
 let proxyUrlLoaded = false;
 
 async function getProxyUrl() {
   if (proxyUrlLoaded) return cachedProxyUrl;
   try {
-    const o = await chrome.storage.local.get(PROXY_STORAGE_KEY);
+    const o = await chrome.storage.local.get([PROXY_STORAGE_KEY, BACKEND_STORAGE_KEY]);
     cachedProxyUrl = o?.[PROXY_STORAGE_KEY] || null;
+    cachedBackendUrl = o?.[BACKEND_STORAGE_KEY] || null;
   } catch (_) {
     cachedProxyUrl = null;
+    cachedBackendUrl = null;
   }
   proxyUrlLoaded = true;
   return cachedProxyUrl;
+}
+
+async function getBackendUrl() {
+  if (proxyUrlLoaded) return cachedBackendUrl;
+  await getProxyUrl();
+  return cachedBackendUrl;
 }
 
 /** Allow settings UI to update the proxy URL at runtime. */
@@ -52,6 +62,12 @@ export function setProxyUrl(url) {
   cachedProxyUrl = url || null;
   proxyUrlLoaded = true;
   try { chrome.storage.local.set({ [PROXY_STORAGE_KEY]: cachedProxyUrl }); } catch (_) {}
+}
+
+/** Allow settings UI to update the backend proxy URL at runtime. */
+export function setBackendUrl(url) {
+  cachedBackendUrl = url || null;
+  try { chrome.storage.local.set({ [BACKEND_STORAGE_KEY]: cachedBackendUrl }); } catch (_) {}
 }
 
 export function normalizeEnriched(user) {
@@ -141,6 +157,40 @@ function pushToCache(username, user) {
 }
 
 /**
+ * Fetch via backend proxy with IP rotation.
+ * Used when direct fetch hits429 — the backend routes through residential proxies.
+ * Set backend URL via: chrome.storage.local.set({ 'pf-backend-url': 'http://your-server:3000' })
+ */
+async function fetchViaBackendProxy(username) {
+  const backendUrl = await getBackendUrl();
+  if (!backendUrl) return null;
+
+  const url = `${backendUrl.replace(/\/$/, '')}/profile?username=${encodeURIComponent(username)}&proxy=true`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), PROXY_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'X-Use-Proxy': 'true' },
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!body.ok || !body.user) return null;
+
+    proxyStats.hits++;
+    log.info('enricher', `backend proxy hit: ${username}`);
+    return { ok: true, status: 200, user: body.user };
+  } catch (_) {
+    clearTimeout(timer);
+    proxyStats.errors++;
+    return null;
+  }
+}
+
+/**
  * Ask a live instagram.com tab to run the request for us.
  *
  * ROOT CAUSE of "N discovered / 0 enriched": a fetch issued from the MV3
@@ -186,16 +236,21 @@ export async function fetchProfile(username) {
   if (viaTab && viaTab.ok) {
     const user = viaTab.body?.data?.user;
     if (!user) return { ok: false, status: 404 };
-    // Push to cache for next time
     pushToCache(username, user);
     return { ok: true, status: 200, user };
   }
-  if (viaTab && (viaTab.status === 404 || viaTab.status === 429)) {
-    return {
-      ok: false,
-      status: viaTab.status,
-      retryAfterMs: viaTab.retryAfterMs || 0,
-    };
+  if (viaTab && viaTab.status === 404) {
+    return { ok: false, status: 404 };
+  }
+  if (viaTab && viaTab.status === 429) {
+    // ── Rate limited! Try backend proxy with IP rotation ─────────────
+    log.warn('enricher', `429 on tab fetch for ${username}, trying backend proxy`);
+    const viaBackend = await fetchViaBackendProxy(username);
+    if (viaBackend) {
+      pushToCache(username, viaBackend.user);
+      return viaBackend;
+    }
+    return { ok: false, status: 429, retryAfterMs: viaTab.retryAfterMs || 0 };
   }
 
   // ── 3. Direct fetch fallback ─────────────────────────────────────────
@@ -214,6 +269,15 @@ export async function fetchProfile(username) {
     clearTimeout(timer);
   }
   if (!res.ok) {
+    if (res.status === 429) {
+      // ── Rate limited on direct fetch! Try backend proxy ───────────
+      log.warn('enricher', `429 on direct fetch for ${username}, trying backend proxy`);
+      const viaBackend = await fetchViaBackendProxy(username);
+      if (viaBackend) {
+        pushToCache(username, viaBackend.user);
+        return viaBackend;
+      }
+    }
     const ra = Number(res.headers?.get?.('retry-after') || 0);
     return {
       ok: false,
@@ -226,7 +290,6 @@ export async function fetchProfile(username) {
   try { body = await res.json(); } catch { return { ok: false, status: 502 }; }
   const user = body?.data?.user;
   if (!user) return { ok: false, status: 404 };
-  // Push to cache
   pushToCache(username, user);
   return { ok: true, status: 200, user };
 }

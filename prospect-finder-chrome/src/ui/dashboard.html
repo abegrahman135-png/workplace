@@ -267,8 +267,12 @@
           <h3>Enrichment proxy</h3>
           <div class="sub">Route enrichment requests through a Cloudflare Worker or self-hosted proxy for caching and higher throughput. Leave blank for direct mode.</div>
           <div class="field" style="margin-bottom:10px">
-            <label>Proxy URL</label>
+            <label>R2 Cache Proxy URL (Cloudflare Worker)</label>
             <input type="url" id="set-proxy-url" placeholder="https://pf-profile-proxy.YOUR_SUBDOMAIN.workers.dev" style="width:100%">
+          </div>
+          <div class="field" style="margin-bottom:10px">
+            <label>Backend Proxy URL (IP Rotation Server)</label>
+            <input type="url" id="set-backend-url" placeholder="http://your-server:3000" style="width:100%">
           </div>
           <div id="proxy-status" style="font-size:12px;color:var(--fg-2);margin-bottom:10px"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -276,9 +280,8 @@
             <button class="btn btn-sm" id="btn-proxy-clear">Clear proxy</button>
           </div>
           <div style="margin-top:10px;font-size:11.5px;color:var(--fg-2);line-height:1.5">
-            <b>Quick setup (free):</b> Deploy the included Cloudflare Worker — see
-            <code>workers/profile-proxy/</code> in the extension source. Free tier covers 100k requests/day.
-            With caching, a 474-profile scan that takes ~30 min direct finishes in ~8 min through the proxy.
+            <b>R2 Cache Proxy:</b> Caches profiles in Cloudflare R2 (free, zero egress). Deploy the included Worker — see <code>workers/profile-proxy/</code>.<br>
+            <b>Backend Proxy:</b> Routes requests through residential proxy IPs when rate limits hit. Deploy <code>workers/backend-proxy/</code> with BrightData/Oxylabs/Smartproxy.
           </div>
         </div>
 

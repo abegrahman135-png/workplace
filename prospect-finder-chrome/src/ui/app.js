@@ -534,20 +534,25 @@ const PROXY_STORAGE_KEY = 'pf-proxy-url';
 
 async function loadProxySettings() {
   try {
-    const o = await chrome.storage.local.get(PROXY_STORAGE_KEY);
-    $('set-proxy-url').value = o?.[PROXY_STORAGE_KEY] || '';
+    const o = await chrome.storage.local.get(['pf-proxy-url', 'pf-backend-url']);
+    $('set-proxy-url').value = o?.['pf-proxy-url'] || '';
+    $('set-backend-url').value = o?.['pf-backend-url'] || '';
     updateProxyStatus();
   } catch (_) {}
 }
 
 function updateProxyStatus() {
   const url = $('set-proxy-url').value.trim();
+  const backend = $('set-backend-url').value.trim();
   const el = $('proxy-status');
-  if (!url) {
-    el.innerHTML = '<span style="color:var(--fg-2)">⚪ Direct mode — requests go through your browser</span>';
+  let html = '';
+  if (!url && !backend) {
+    html = '<span style="color:var(--fg-2)">⚪ Direct mode — requests go through your browser</span>';
   } else {
-    el.innerHTML = '<span style="color:var(--info)">🔵 Proxy configured — requests route through proxy</span>';
+    if (url) html += '<span style="color:var(--info)">🔵 R2 cache proxy configured</span><br>';
+    if (backend) html += '<span style="color:var(--success)">🟢 Backend proxy configured (IP rotation on429)</span>';
   }
+  el.innerHTML = html;
 }
 
 async function testProxy() {
@@ -577,12 +582,14 @@ async function testProxy() {
 
 async function saveProxySettings() {
   const url = $('set-proxy-url').value.trim();
+  const backend = $('set-backend-url').value.trim();
   try {
-    if (url) {
-      await chrome.storage.local.set({ [PROXY_STORAGE_KEY]: url });
-    } else {
-      await chrome.storage.local.remove(PROXY_STORAGE_KEY);
-    }
+    const toSet = {};
+    const toRemove = [];
+    if (url) toSet['pf-proxy-url'] = url; else toRemove.push('pf-proxy-url');
+    if (backend) toSet['pf-backend-url'] = backend; else toRemove.push('pf-backend-url');
+    if (Object.keys(toSet).length) await chrome.storage.local.set(toSet);
+    if (toRemove.length) await chrome.storage.local.remove(toRemove);
     // Notify the background worker
     try { await chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED' }); } catch (_) {}
   } catch (_) {}
