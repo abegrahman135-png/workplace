@@ -1,11 +1,25 @@
 /**
  * interceptor.js — MAIN world network tap.
- * Observes Instagram's own follower/following requests and forwards the
- * payloads (plus pagination cursors) to the content script.
+ *
+ * Only captures follower/following lists for the TARGET account being scanned.
+ * Previously it captured ALL friendship requests, which included suggested
+ * accounts, the user's own following list, and other background requests —
+ * that's why 564 followers showed up as 1014 profiles.
  */
+
 (() => {
   if (window.__pfTap) return;
   window.__pfTap = true;
+
+  // Track the target user ID being scanned — set by the content script
+  let targetUserId = null;
+
+  // Listen for target updates from the content script
+  window.addEventListener('message', (e) => {
+    if (e.data?.source === 'PF_CONTENT' && e.data.type === 'SET_TARGET') {
+      targetUserId = e.data.userId;
+    }
+  });
 
   const send = (payload, url) => {
     try {
@@ -13,9 +27,19 @@
     } catch (_) {}
   };
 
-  const isTarget = (u) =>
-    /\/api\/v1\/friendships\/\d+\/(followers|following)\//.test(u) ||
-    /\/graphql\/query/.test(u);
+  const isTarget = (u) => {
+    // Only capture requests for the specific target user being scanned
+    if (!targetUserId) return false;
+
+    // Match friendships/{userId}/followers or friendships/{userId}/following
+    const match = u.match(/\/api\/v1\/friendships\/(\d+)\/(followers|following)\//);
+    if (match) {
+      return match[1] === targetUserId;
+    }
+
+    // Don't capture GraphQL queries — those are usually suggested accounts
+    return false;
+  };
 
   const origFetch = window.fetch;
   window.fetch = async function (...args) {

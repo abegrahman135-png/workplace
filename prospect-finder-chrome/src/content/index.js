@@ -489,6 +489,8 @@
     let result = { ok: false, reason: 'no_user' };
 
     if (info?.id) {
+      // Tell the interceptor to only capture requests for this specific user
+      window.postMessage({ source: 'PF_CONTENT', type: 'SET_TARGET', userId: info.id }, '*');
       hud(progressLine(`starting · ~${expectedTotal.toLocaleString()} to scan`));
       result = await apiHarvest(sid, info.id);
     }
