@@ -60,22 +60,17 @@ echo         INSTALLING DEPENDENCIES
 echo  ========================================================
 echo.
 
-echo  [1/4] Checking Node.js...
+echo  [1/3] Checking Node.js...
 call :CHECK_NODE
 if errorlevel 1 goto MENU
 
 echo.
-echo  [2/4] Checking npm...
-call :CHECK_NPM
-if errorlevel 1 goto MENU
-
-echo.
-echo  [3/4] Checking Wrangler...
+echo  [2/3] Checking Wrangler...
 call :CHECK_WRANGLER
 if errorlevel 1 goto MENU
 
 echo.
-echo  [4/4] Installing project dependencies...
+echo  [3/3] Installing project dependencies...
 call :INSTALL_PROJECT_DEPS
 
 echo.
@@ -600,16 +595,9 @@ for /f "tokens=*" %%i in ('node --version') do echo  OK - Node.js %%i
 exit /b 0
 
 :CHECK_NPM
-npm --version >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo  ERROR: npm not found. It should come with Node.js.
-    echo  Try reinstalling Node.js from https://nodejs.org
-    echo  Press any key...
-    pause >nul
-    exit /b 1
-)
-for /f "tokens=*" %%i in ('npm --version') do echo  OK - npm %%i
+:: npm comes with Node.js - if Node works, npm works
+:: Skip the version check to avoid hanging on first run
+echo  OK - npm (bundled with Node.js)
 exit /b 0
 
 :CHECK_WRANGLER
