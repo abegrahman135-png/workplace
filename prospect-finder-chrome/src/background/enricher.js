@@ -351,9 +351,35 @@ async function cacheAvatar(username, url) {
 export async function runEnrichJob(job, ctx) {
   const { limiter, breaker, settings, deadline = Infinity } = ctx;
 
+  // Even if breaker is open, try backend proxy first (different IP = no rate limit)
   if (breaker.isOpen) {
-    // Report the ORIGINAL fault, not just "breaker_open" - otherwise the UI
-    // shows a generic stall and the actual 401/403 stays hidden.
+    const viaBackend = await fetchViaBackendProxy(job.username);
+    if (viaBackend && viaBackend.ok) {
+      // Backend proxy worked! Reset breaker and continue
+      breaker.reset();
+      lastFault = null;
+      limiter.reportSuccess();
+      // Continue to process the result below
+      const enriched = normalizeEnriched(viaBackend.user);
+      const prospect = await db.get(STORES.PROSPECTS, job.username);
+      if (!prospect) return { outcome: 'dead', reason: 'no_prospect' };
+      await cacheAvatar(job.username, enriched.profile_pic_url);
+      const evidence = await classifyTier2(prospect.raw, enriched, settings, job.lane);
+      const metrics = { posts: enriched.post_count, followers: enriched.follower_count, following: enriched.following_count };
+      const scored = scoreProspect(metrics, evidence, enriched, settings);
+      const { warnings } = qualifyTier2(enriched, settings);
+      await db.write([STORES.PROSPECTS], async (t) => {
+        const S = t.store(STORES.PROSPECTS);
+        const cur = await S.get(job.username);
+        if (!cur) return;
+        const next = { ...cur, enriched, metrics, evidence, scored, warnings, stage: STAGE.SCORED, label: scored.label, finalScore: scored.finalScore, femaleScore: evidence.female.value, femaleConfidence: evidence.female.confidence, accountType: classifyAccountType(enriched), attempts: job.attempts, lastError: null, enrichedAt: Date.now(), lastSeenAt: Date.now(), scoreVersion: SCORE_VERSION, bioHash: hashStr(enriched.biography || '') };
+        next.searchTokens = buildSearchTokens(next);
+        await S.put(next);
+      });
+      await bumpStats({ enriched: 1 });
+      return { outcome: 'done' };
+    }
+    // Backend proxy also failed, wait for cooldown
     return {
       outcome: 'retry',
       after: Math.max(15_000, breaker.remaining()),
