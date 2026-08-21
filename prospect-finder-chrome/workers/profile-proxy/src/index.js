@@ -1,17 +1,12 @@
 /**
- * Cloudflare Worker — Instagram Profile Proxy (with session pool)
+ * Cloudflare Worker — Instagram Profile Proxy
  *
- * Deploy: npx wrangler deploy
+ * Uses R2 for profile caching (no egress fees, cheaper than KV).
  *
- * Setup (one-time):
- *   1. Log in to instagram.com in your browser
- *   2. Open DevTools → Application → Cookies → instagram.com
- *   3. Copy the `sessionid` value
- *   4. Run:  echo "YOUR_SESSION_ID" | npx wrangler secret put IG_SESSION_1
- *   5. (Optional) Add more sessions for higher throughput:
- *      echo "SESSION_2" | npx wrangler secret put IG_SESSION_2
- *
- * The worker rotates through available sessions to distribute load.
+ * Setup:
+ *   1. npx wrangler r2 bucket create pf-profile-cache
+ *   2. echo "YOUR_SESSIONID" | npx wrangler secret put IG_SESSION_1
+ *   3. npx wrangler deploy
  */
 
 export default {
@@ -26,15 +21,12 @@ export default {
     if (url.pathname === '/stats') return handleStats(env);
     if (url.pathname === '/profile') return handleProfile(request, env, url);
     if (url.pathname === '/profiles') return handleBatch(request, env);
-    if (url.pathname === '/configure') return handleConfigure(request, env);
 
     return json({ error: 'not_found' }, 404);
   },
 };
 
 // ── Session pool ───────────────────────────────────────────────────────────
-// Sessions are stored as secrets: IG_SESSION_1, IG_SESSION_2, ... IG_SESSION_N
-// The worker rotates through them to spread load across multiple logins.
 function getSessions(env) {
   const sessions = [];
   for (let i = 1; i <= 10; i++) {
@@ -59,7 +51,6 @@ let coalescedCount = 0;
 let missCount = 0;
 let hitCount = 0;
 let totalRequests = 0;
-let lastError = null;
 
 async function handleHealth(env) {
   const sessions = getSessions(env);
@@ -67,7 +58,7 @@ async function handleHealth(env) {
     ok: true,
     ts: Date.now(),
     sessions: sessions.length,
-    cached: await env.PROFILE_CACHE?.get('__count') || '0',
+    cache: 'r2',
   });
 }
 
@@ -78,7 +69,6 @@ async function handleStats(env) {
     cacheHits: hitCount,
     cacheMisses: missCount,
     sessions: getSessions(env).length,
-    lastError,
   });
 }
 
@@ -91,16 +81,18 @@ async function handleProfile(request, env, url) {
   const origin = request.headers.get('Origin');
   totalRequests++;
 
-  // 1. KV cache (24h TTL)
-  const cacheKey = `ig:${username}`;
+  // 1. Check R2 cache (24h TTL)
+  const cacheKey = `profiles/${username}.json`;
   try {
-    const cached = await env.PROFILE_CACHE?.get(cacheKey, { type: 'json' });
-    if (cached && cached.fetchedAt && Date.now() - cached.fetchedAt < 24 * 3600_000) {
-      hitCount++;
-      return json({
-        ok: true, user: cached.user, cached: true, fetchedAt: cached.fetchedAt,
-        session: 'cached',
-      }, 200, origin);
+    const cached = await env.PROFILE_CACHE?.get(cacheKey);
+    if (cached) {
+      const data = await cached.json();
+      if (data.fetchedAt && Date.now() - data.fetchedAt < 24 * 3600_000) {
+        hitCount++;
+        return json({
+          ok: true, user: data.user, cached: true, fetchedAt: data.fetchedAt,
+        }, 200, origin);
+      }
     }
   } catch (_) {}
 
@@ -140,7 +132,6 @@ async function doFetch(username, env) {
     'Referer': `https://www.instagram.com/${username}/`,
   };
 
-  // Add session cookie if available
   if (sessionId) {
     headers['Cookie'] = `sessionid=${sessionId};`;
   }
@@ -153,14 +144,12 @@ async function doFetch(username, env) {
     res = await fetch(igUrl, { headers, signal: ac.signal, redirect: 'follow' });
   } catch (e) {
     clearTimeout(timer);
-    lastError = `fetch_error: ${e?.message}`;
     return { body: { ok: false, status: 0, error: 'network_error' }, status: 502 };
   }
   clearTimeout(timer);
 
   if (!res.ok) {
     const ra = Number(res.headers.get('retry-after') || 0);
-    lastError = `ig_${res.status} for ${username}`;
     return {
       body: {
         ok: false,
@@ -175,13 +164,13 @@ async function doFetch(username, env) {
   const user = body?.data?.user;
   if (!user) return { body: { ok: false, status: 404 }, status: 404 };
 
-  // Cache in KV (24h TTL)
+  // Cache in R2 (no egress fees!)
   try {
-    await env.PROFILE_CACHE?.put(cacheKeyFor(username), JSON.stringify({
-      user, fetchedAt: Date.now(),
-    }), { expirationTtl: 86400 });
-    const c = parseInt(await env.PROFILE_CACHE?.get('__count') || '0', 10);
-    await env.PROFILE_CACHE?.put('__count', String(c + 1), { expirationTtl: 86400 * 30 });
+    const cacheData = JSON.stringify({ user, fetchedAt: Date.now() });
+    await env.PROFILE_CACHE?.put(`profiles/${username}.json`, cacheData, {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: { fetchedAt: String(Date.now()) },
+    });
   } catch (_) {}
 
   return {
@@ -206,11 +195,14 @@ async function handleBatch(request, env) {
   const origin = request.headers.get('Origin');
   const results = await Promise.all(
     usernames.map(async (username) => {
-      const cacheKey = cacheKeyFor(username.toLowerCase());
+      const cacheKey = `profiles/${username.toLowerCase()}.json`;
       try {
-        const cached = await env.PROFILE_CACHE?.get(cacheKey, { type: 'json' });
-        if (cached && Date.now() - cached.fetchedAt < 24 * 3600_000) {
-          return { username, ok: true, user: cached.user, cached: true };
+        const cached = await env.PROFILE_CACHE?.get(cacheKey);
+        if (cached) {
+          const data = await cached.json();
+          if (data.fetchedAt && Date.now() - data.fetchedAt < 24 * 3600_000) {
+            return { username, ok: true, user: data.user, cached: true };
+          }
         }
       } catch (_) {}
       return { username, ok: false, cached: false, status: 404 };
@@ -218,31 +210,6 @@ async function handleBatch(request, env) {
   );
 
   return json({ results }, 200, origin);
-}
-
-async function handleConfigure(request, env) {
-  // POST /configure with { session: "sessionid_value" }
-  // This stores a new session cookie in KV for dynamic rotation.
-  // In production, use wrangler secrets instead for security.
-  if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
-
-  let body;
-  try { body = await request.json(); } catch (_) {
-    return json({ error: 'invalid_json' }, 400);
-  }
-
-  if (!body.session) return json({ error: 'missing session' }, 400);
-
-  // Store in KV as a dynamic session (rotates with secrets)
-  const sessions = JSON.parse(await env.PROFILE_CACHE?.get('__sessions') || '[]');
-  sessions.push({ id: body.session, added: Date.now() });
-  await env.PROFILE_CACHE?.put('__sessions', JSON.stringify(sessions), { expirationTtl: 86400 * 365 });
-
-  return json({ ok: true, totalSessions: sessions.length + getSessions(env).length });
-}
-
-function cacheKeyFor(username) {
-  return `ig:${username.toLowerCase()}`;
 }
 
 function corsHeaders(origin) {
